@@ -10,19 +10,155 @@
 
 using namespace std;
 
-__global__ void kernel(unsigned *img, unsigned *d_img, unsigned width, unsigned height)
+//! Diviser la matrice en 3 sous matrice pour le cache ( au lieu de faire +1 , +2 )
+//! Passer de unsigned int à char ( vus que pixels )
+
+__global__ void gris(unsigned *d_img, unsigned width, unsigned height)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+
+    float count = 0, count1 = 0, count2 = 0, c = 0;
+    int idx = ((y * width) + x) * 3;
+    int idv1 = (((y + 1) * width) + x) * 3;
+    int idv2 = (((y - 1) * width) + x) * 3;
+    int idv3 = ((y * width) + (x + 1)) * 3;
+    int idv4 = ((y * width) + (x - 1)) * 3;
+
+    if (x > 0)
+    {
+      count += d_img[idv3];
+      count1 += d_img[idv3 + 1];
+      count2 += d_img[idv3 + 2];
+      c++;
+    }
+
+    if (x < width - 1)
+    {
+      count += d_img[idv4];
+      count1 += d_img[idv4 + 1];
+      count2 += d_img[idv4 + 2];
+      c++;
+    }
+
+    if (y > 0)
+    {
+      count += d_img[idv1];
+      count1 += d_img[idv1 + 1];
+      count2 += d_img[idv1 + 2];
+      c++;
+    }
+
+    if (y < height - 1)
+    {
+      count += d_img[idv2];
+      count1 += d_img[idv2 + 1];
+      count2 += d_img[idv2 + 2];
+      c++;
+    }
+
+    count += d_img[idx];
+    count1 += d_img[idx + 1];
+    count2 += d_img[idx + 2];
+
+    count = count* 0.299f + count1 * 0.587f + count2 * 0.114f;
+
+    c++;
+
+    d_img[idx + 0] = count;
+    d_img[idx + 1] = count;
+    d_img[idx + 2] = count;
+    // printf("%d %d %f\n",y,x, count);
+  }
+}
+__global__ void flou(unsigned *d_img, unsigned width, unsigned height)
 {
 
-  int index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index < height)
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
   {
-    for (int x = 0; x < width; x++)
+
+    int count = 0, count1 = 0, count2 = 0, c = 0;
+    int idx = ((y * width) + x) * 3;
+    int idv1 = (((y + 1) * width) + x) * 3;
+    int idv2 = (((y - 1) * width) + x) * 3;
+    int idv3 = ((y * width) + (x + 1)) * 3;
+    int idv4 = ((y * width) + (x - 1)) * 3;
+
+    if (x > 0)
     {
-      int idx = ((index * width) + x) * 3;
-      d_img[idx + 0] /= 2;
-      d_img[idx + 1] /= 4;
-      d_img[idx + 2] = 0xFF / 1.5;
+      count += d_img[idv3];
+      count1 += d_img[idv3 + 1];
+      count2 += d_img[idv3 + 2];
+      c++;
     }
+
+    if (x < width - 1)
+    {
+      count += d_img[idv4];
+      count1 += d_img[idv4 + 1];
+      count2 += d_img[idv4 + 2];
+      c++;
+    }
+
+    if (y > 0)
+    {
+      count += d_img[idv1];
+      count1 += d_img[idv1 + 1];
+      count2 += d_img[idv1 + 2];
+      c++;
+    }
+
+    if (y < height - 1)
+    {
+      count += d_img[idv2];
+      count1 += d_img[idv2 + 1];
+      count2 += d_img[idv2 + 2];
+      c++;
+    }
+
+    count += d_img[idx];
+    count1 += d_img[idx + 1];
+    count2 += d_img[idx + 2];
+
+    c++;
+
+    d_img[idx + 0] = count / c;
+    d_img[idx + 1] = count1 / c;
+    d_img[idx + 2] = count2 / c;
+  }
+}
+
+__global__ void saturation(unsigned *d_img, unsigned width, unsigned height)
+{
+
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+
+      int idx = ((y * width) + x) * 3;
+      d_img[idx + 2] = 0xFF / 1.5;
+    
+  }
+}
+
+__global__ void symhorizontal(unsigned *d_img, unsigned *d_tmp, unsigned width, unsigned height)
+{
+
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+      int ida = ((y * width) + x) * 3;
+      int idb = ((width * height) - ((y * width) + x)) * 3;
+      d_img[ida + 0] = d_tmp[idb + 0];
+      d_img[ida + 1] = d_tmp[idb + 1];
+      d_img[ida + 2] = d_tmp[idb + 2];
+    
   }
 }
 
@@ -43,7 +179,7 @@ int main(int argc, char **argv)
   unsigned height = FreeImage_GetHeight(bitmap);
   unsigned pitch = FreeImage_GetPitch(bitmap);
 
-  printf( "Processing Image of size %d x %d\n", width, height);
+  printf("Processing Image of size %d x %d\n", width, height);
 
   int size = sizeof(unsigned int) * 3 * width * height;
 
@@ -67,50 +203,70 @@ int main(int argc, char **argv)
     bits += pitch;
   }
 
-  memcpy(d_img, img, 3 * width * height * sizeof(unsigned int));
-  memcpy(d_tmp, img, 3 * width * height * sizeof(unsigned int));
+  memcpy(d_img, img, size);
+  memcpy(d_tmp, img, size);
 
   // Kernel
-
-  for (int y = 0; y < height; y++)
-  {
-    for (int x = 0; x < width; x++)
+  /*
+    for (int y = 0; y < height; y++)
     {
-      int ida = ((y * width) + x) * 3;
-      int idb = ((width * height) - ((y * width) + x)) * 3;
-      d_img[ida + 0] = d_tmp[idb + 0];
-      d_img[ida + 1] = d_tmp[idb + 1];
-      d_img[ida + 2] = d_tmp[idb + 2];
-    }
-  }
+      for (int x = 0; x < width; x++)
+      {
+        int ida = ((y * width) + x) * 3;
+        int idb = ((width * height) - ((y * width) + x)) * 3;
+        d_img[ida + 0] = d_tmp[idb + 0];
+        d_img[ida + 1] = d_tmp[idb + 1];
+        d_img[ida + 2] = d_tmp[idb + 2];
+      }
+    }*/
 
-  for (int y = 0; y < height; y++)
-  {
-    for (int x = 0; x < width; x++)
+  /*
+    for (int y = 0; y < height; y++)
     {
+      for (int x = 0; x < width; x++)
+      {
 
-      int idx = ((y * width) + x) * 3;
-      d_img[idx + 0] /= 2;
-      d_img[idx + 1] /= 4;
-      d_img[idx + 2] = 0xFF / 1.5;
-    }
-  }
+        int idx = ((y * width) + x) * 3;
+        d_img[idx + 0] /= 2;
+        d_img[idx + 1] /= 4;
+        d_img[idx + 2] = 0xFF / 1.5;
+      }
+    }*/
 
-  unsigned *d_a, *d_b;
+  unsigned *d_a, *d_b, *d_c;
 
   cudaMalloc((void **)&d_a, size);
   cudaMalloc((void **)&d_b, size);
+  cudaMalloc((void **)&d_c, size);
 
   cudaMemcpy(d_a, d_img, size, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_b, img, size, cudaMemcpyHostToDevice);
 
-  dim3 dimBlock(height, 1, 1);
-  dim3 dimGrid(1, 1, 1);
+  dim3 dimBlock(32, 32, 1);
+  dim3 dimGrid((height / 32) + 1, (width / 32) + 1, 1);
 
-  kernel<<<dimGrid, dimBlock>>>(d_a, d_b, width, height);
+  gris<<<dimGrid, dimBlock>>>(d_a, width, height);
+
+  cudaError_t cudaerr = cudaDeviceSynchronize();
 
   cudaMemcpy(d_img, d_a, size, cudaMemcpyDeviceToHost);
-  cudaMemcpy(img, d_b, size, cudaMemcpyDeviceToHost);
+
+  cudaDeviceSynchronize();
+
+  if (cudaerr != cudaSuccess)
+    printf("kernel launch failed with error \"%s\".\n",
+           cudaGetErrorString(cudaerr));
+
+  /*cudaMemcpy(d_b, d_img, size, cudaMemcpyHostToDevice);
+   cudaMemcpy(d_c, d_tmp, size, cudaMemcpyHostToDevice);
+
+   symhorizontal<<<dimGrid, dimBlock>>>(d_b, d_c, width, height);
+
+   cudaMemcpy(d_img, d_b, size, cudaMemcpyDeviceToHost);
+
+   cudaerr = cudaDeviceSynchronize();
+   if (cudaerr != cudaSuccess)
+     printf("kernel launch failed with error \"%s\".\n",
+            cudaGetErrorString(cudaerr));*/
 
   /*
 
@@ -161,7 +317,7 @@ int main(int argc, char **argv)
   }*/
 
   // Copy back
-  memcpy(img, d_img, 3 * width * height * sizeof(unsigned int));
+  memcpy(img, d_img, size);
 
   bits = (BYTE *)FreeImage_GetBits(bitmap);
   for (int y = 0; y < height; y++)
