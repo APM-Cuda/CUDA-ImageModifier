@@ -34,7 +34,6 @@ int main(int argc, char **argv)
 
   unsigned int *img = (unsigned int *)malloc(size);
   unsigned int *d_img = (unsigned int *)malloc(size);
-  unsigned int *d_tmp = (unsigned int *)malloc(size);
 
   BYTE *bits = (BYTE *)FreeImage_GetBits(bitmap);
   for (int y = 0; y < height; y++)
@@ -53,7 +52,6 @@ int main(int argc, char **argv)
   }
 
   memcpy(d_img, img, 3 * width * height * sizeof(unsigned int));
-  memcpy(d_tmp, img, 3 * width * height * sizeof(unsigned int));
 
   // Kernel
   /*
@@ -190,8 +188,7 @@ int main(int argc, char **argv)
         }
       }
   */
-
-  /*
+  /* FLOU GRIS
     for (int y = 0; y < height; y++)
     {
       for (int x = 0; x < width; x++)
@@ -254,6 +251,23 @@ int main(int argc, char **argv)
   {
     for (int x = 0; x < width; x++)
     {
+
+      int idx = ((y * width) + x) * 3;
+      int grey = d_img[idx + 0] * 0.299 + d_img[idx + 1] * 0.587 + d_img[idx + 2] * 0.114;
+
+      d_img[idx + 0] = grey;
+      d_img[idx + 1] = grey;
+      d_img[idx + 2] = grey;
+    }
+  }
+  unsigned int *d_tmp = (unsigned int *)malloc(size);
+
+  memcpy(d_tmp, d_img, 3 * width * height * sizeof(unsigned int));
+
+  for (int y = 0; y < height; y++)
+  {
+    for (int x = 0; x < width; x++)
+    {
       int idx = ((y * width) + x) * 3;
 
       if (y == 0 || x == 0 || y == height - 1 || x == width - 1)
@@ -263,36 +277,25 @@ int main(int argc, char **argv)
         d_img[idx + 2] = 0;
         continue;
       }
-      float count = 0, count1 = 0, count2 = 0, c = 0;
-      int idv1 = (((y + 1) * width) + x) * 3;
-      int idv2 = (((y - 1) * width) + x) * 3;
-      int idv3 = ((y * width) + (x + 1)) * 3;
-      int idv4 = ((y * width) + (x - 1)) * 3;
-      int idv5 = (((y - 1) * width) + (x + 1)) * 3;
-      int idv6 = (((y - 1) * width) + (x - 1)) * 3;
-      int idv7 = (((y + 1) * width) + (x + 1)) * 3;
-      int idv8 = (((y + 1) * width) + (x - 1)) * 3;
 
-    //  double gx = (((d_img[idv5]) - (d_img[idv6])) + 2 * ((d_img[idv3]) - (d_img[idv4])) + ((d_img[idv7]) - (d_img[idv8])));
-      //double gy = (((d_img[idv8]) - (d_img[idv6])) + 2 * ((d_img[idv1]) - (d_img[idv2])) + ((d_img[idv7]) - (d_img[idv5])));
-      
-      int gx = -2*(d_img[idv4]) - d_img[idv8] - d_img[idv6] + d_img[idv5] +2* d_img[idv3]+d_img[idv7];
+      int idv1 = (y * width + (x - 1) * 3);
+      int idv2 = (y * width + (x + 1) * 3);
+      int idv3 = (((y - 1) * width + x) * 3);
+      int idv4 = (((y + 1) * width + x) * 3);
+      int idv5 = (((y - 1) * width) + (x - 1)) * 3;
+      int idv6 = (((y - 1) * width) + (x + 1)) * 3;
+      int idv7 = (((y + 1) * width) + (x - 1)) * 3;
+      int idv8 = (((y + 1) * width) + (x + 1)) * 3;
 
-      int gy = -d_img[idv6] -2*d_img[idv2] - d_img[idv5] + d_img[idv8] +2*d_img[idv1] + d_img[idv7];
-      
+      int gx = -d_tmp[idv7] - d_tmp[idv5] - 2 * d_tmp[idv1] + d_tmp[idv8] + d_tmp[idv6] + 2 * d_tmp[idv2];
+
+      int gy = -d_tmp[idv7] - d_tmp[idv8] - 2 * d_tmp[idv4] + d_tmp[idv5] + d_tmp[idv6] + 2 * d_tmp[idv3];
+
       int gn = (int)sqrt(gx * gx + gy * gy);
 
       d_img[idx + 0] = gn;
 
-    /*  gx = ((d_img[idv5 + 1] - d_img[idv6 + 1]) + 2 * (d_img[idv3 + 1] - d_img[idv4 + 1]) + (d_img[idv7 + 1] - d_img[idv8 + 1]));
-      gy = ((d_img[idv8 + 1] - d_img[idv6 + 1]) + 2 * (d_img[idv1 + 1] - d_img[idv2 + 1]) + (d_img[idv7 + 1] - d_img[idv5 + 1]));
-      gn = (double)sqrt(gx * gx + gy * gy);*/
-
       d_img[idx + 1] = gn;
-
-    /*  gx = ((d_img[idv5 + 2] - d_img[idv6 + 2]) + 2 * (d_img[idv3 + 2] - d_img[idv4 + 2]) + (d_img[idv7 + 2] - d_img[idv8 + 2]));
-      gy = ((d_img[idv8 + 2] - d_img[idv6 + 2]) + 2 * (d_img[idv1 + 2] - d_img[idv2 + 2]) + (d_img[idv7 + 2] - d_img[idv5 + 2]));
-      gn = (double)sqrt(gx * gx + gy * gy);*/
 
       d_img[idx + 2] = gn;
     }

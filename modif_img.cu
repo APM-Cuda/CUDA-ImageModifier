@@ -13,6 +13,47 @@ using namespace std;
 //! Diviser la matrice en 3 sous matrice pour le cache ( au lieu de faire +1 , +2 )
 //! Passer de unsigned int à char ( vus que pixels )
 
+__global__ void sobel(unsigned *d_img, unsigned *d_tmp, unsigned width, unsigned height)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+    int idx = ((y * width) + x) * 3;
+
+    if (y == 0 || x == 0 || y == height - 1 || x == width - 1)
+    {
+      d_img[idx] = 0;
+      d_img[idx + 1] = 0;
+      d_img[idx + 2] = 0;
+    }
+    else
+    {
+
+      int idv1 = (y * width + (x - 1) * 3);
+      int idv2 = (y * width + (x + 1) * 3);
+      int idv3 = (((y - 1) * width + x) * 3);
+      int idv4 = (((y + 1) * width + x) * 3);
+      int idv5 = (((y - 1) * width) + (x - 1)) * 3;
+      int idv6 = (((y - 1) * width) + (x + 1)) * 3;
+      int idv7 = (((y + 1) * width) + (x - 1)) * 3;
+      int idv8 = (((y + 1) * width) + (x + 1)) * 3;
+
+      int gx = -d_tmp[idv6] - d_tmp[idv5] - 2 * d_tmp[idv3] + d_tmp[idv8] + d_tmp[idv7] + 2 * d_tmp[idv4];
+
+      int gy = -d_tmp[idv6] - d_tmp[idv8] - 2 * d_tmp[idv2] + d_tmp[idv5] + d_tmp[idv7] + 2 * d_tmp[idv1];
+
+      int gn = sqrtf(gx * gx + gy * gy);
+
+      d_img[idx + 0] = gn;
+
+      d_img[idx + 1] = gn;
+
+      d_img[idx + 2] = gn;
+    }
+  }
+}
+
 __global__ void gris(unsigned *d_img, unsigned width, unsigned height)
 {
   int y = blockIdx.x * blockDim.x + threadIdx.x;
@@ -20,56 +61,12 @@ __global__ void gris(unsigned *d_img, unsigned width, unsigned height)
   if (y < height && x < width)
   {
 
-    float count = 0, count1 = 0, count2 = 0, c = 0;
     int idx = ((y * width) + x) * 3;
-    int idv1 = (((y + 1) * width) + x) * 3;
-    int idv2 = (((y - 1) * width) + x) * 3;
-    int idv3 = ((y * width) + (x + 1)) * 3;
-    int idv4 = ((y * width) + (x - 1)) * 3;
+    int grey = d_img[idx + 0] * 0.299 + d_img[idx + 1] * 0.587 + d_img[idx + 2] * 0.114;
 
-    if (x > 0)
-    {
-      count += d_img[idv3];
-      count1 += d_img[idv3 + 1];
-      count2 += d_img[idv3 + 2];
-      c++;
-    }
-
-    if (x < width - 1)
-    {
-      count += d_img[idv4];
-      count1 += d_img[idv4 + 1];
-      count2 += d_img[idv4 + 2];
-      c++;
-    }
-
-    if (y > 0)
-    {
-      count += d_img[idv1];
-      count1 += d_img[idv1 + 1];
-      count2 += d_img[idv1 + 2];
-      c++;
-    }
-
-    if (y < height - 1)
-    {
-      count += d_img[idv2];
-      count1 += d_img[idv2 + 1];
-      count2 += d_img[idv2 + 2];
-      c++;
-    }
-
-    count += d_img[idx];
-    count1 += d_img[idx + 1];
-    count2 += d_img[idx + 2];
-
-    count = count* 0.299f + count1 * 0.587f + count2 * 0.114f;
-
-    c++;
-
-    d_img[idx + 0] = count;
-    d_img[idx + 1] = count;
-    d_img[idx + 2] = count;
+    d_img[idx + 0] = grey;
+    d_img[idx + 1] = grey;
+    d_img[idx + 2] = grey;
     // printf("%d %d %f\n",y,x, count);
   }
 }
@@ -140,9 +137,8 @@ __global__ void saturation(unsigned *d_img, unsigned width, unsigned height)
   if (y < height && x < width)
   {
 
-      int idx = ((y * width) + x) * 3;
-      d_img[idx + 2] = 0xFF / 1.5;
-    
+    int idx = ((y * width) + x) * 3;
+    d_img[idx + 2] = 0xFF / 1.5;
   }
 }
 
@@ -153,12 +149,11 @@ __global__ void symhorizontal(unsigned *d_img, unsigned *d_tmp, unsigned width, 
   int x = blockIdx.y * blockDim.y + threadIdx.y;
   if (y < height && x < width)
   {
-      int ida = ((y * width) + x) * 3;
-      int idb = ((width * height) - ((y * width) + x)) * 3;
-      d_img[ida + 0] = d_tmp[idb + 0];
-      d_img[ida + 1] = d_tmp[idb + 1];
-      d_img[ida + 2] = d_tmp[idb + 2];
-    
+    int ida = ((y * width) + x) * 3;
+    int idb = ((width * height) - ((y * width) + x)) * 3;
+    d_img[ida + 0] = d_tmp[idb + 0];
+    d_img[ida + 1] = d_tmp[idb + 1];
+    d_img[ida + 2] = d_tmp[idb + 2];
   }
 }
 
@@ -206,33 +201,6 @@ int main(int argc, char **argv)
   memcpy(d_img, img, size);
   memcpy(d_tmp, img, size);
 
-  // Kernel
-  /*
-    for (int y = 0; y < height; y++)
-    {
-      for (int x = 0; x < width; x++)
-      {
-        int ida = ((y * width) + x) * 3;
-        int idb = ((width * height) - ((y * width) + x)) * 3;
-        d_img[ida + 0] = d_tmp[idb + 0];
-        d_img[ida + 1] = d_tmp[idb + 1];
-        d_img[ida + 2] = d_tmp[idb + 2];
-      }
-    }*/
-
-  /*
-    for (int y = 0; y < height; y++)
-    {
-      for (int x = 0; x < width; x++)
-      {
-
-        int idx = ((y * width) + x) * 3;
-        d_img[idx + 0] /= 2;
-        d_img[idx + 1] /= 4;
-        d_img[idx + 2] = 0xFF / 1.5;
-      }
-    }*/
-
   unsigned *d_a, *d_b, *d_c;
 
   cudaMalloc((void **)&d_a, size);
@@ -256,65 +224,19 @@ int main(int argc, char **argv)
     printf("kernel launch failed with error \"%s\".\n",
            cudaGetErrorString(cudaerr));
 
-  /*cudaMemcpy(d_b, d_img, size, cudaMemcpyHostToDevice);
-   cudaMemcpy(d_c, d_tmp, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_b, d_img, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_c, d_tmp, size, cudaMemcpyHostToDevice);
 
-   symhorizontal<<<dimGrid, dimBlock>>>(d_b, d_c, width, height);
+  sobel<<<dimGrid, dimBlock>>>(d_b, d_c, width, height);
 
-   cudaMemcpy(d_img, d_b, size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(d_img, d_b, size, cudaMemcpyDeviceToHost);
 
-   cudaerr = cudaDeviceSynchronize();
-   if (cudaerr != cudaSuccess)
-     printf("kernel launch failed with error \"%s\".\n",
-            cudaGetErrorString(cudaerr));*/
+  cudaerr = cudaDeviceSynchronize();
+  if (cudaerr != cudaSuccess)
+    printf("kernel launch failed with error \"%s\".\n",
+           cudaGetErrorString(cudaerr));
 
-  /*
-
-  for (int y = height / 2; y < height; y++)
-  {
-    for (int x = width / 2; x < width; x++)
-    {
-      if (x >= ((width / 2) + (width / 2 * 0.25)) || y >= ((height / 2) + (height / 2 * 0.35)))
-      {
-        int idx = ((y * width) + x) * 3;
-        d_img[idx + 0] = 0xFF - d_img[idx + 0];
-        d_img[idx + 1] = 0xFF / 2;
-        d_img[idx + 2] /= 4;
-      }
-    }
-  }
-
-  for (int y = height / 2; y < height; y++)
-  {
-    for (int x = 0; x < width / 2; x++)
-    {
-      if (x < (width / 2 * 0.75) || y >= (height / 2) + (height / 2 * 0.35))
-      {
-        int idx = ((y * width) + x) * 3;
-        d_img[idx + 0] = 0xFF / 2;
-        d_img[idx + 1] /= 2;
-        d_img[idx + 2] /= 2;
-      }
-    }
-  }
-
-  for (int y = 0; y < height / 2; y++)
-  {
-    for (int x = width / 2; x < width; x++)
-    {
-      if (x >= ((width / 2) + (width / 2 * 0.25)) || y < (height / 2 * 0.65))
-      {
-        int idx = ((y * width) + x) * 3;
-        int grey = d_img[idx + 0] * 0.299 + d_img[idx + 1] * 0.587 + d_img[idx + 2] * 0.114;
-        d_img[idx + 0] = 0xFF - d_img[idx + 0];
-        d_img[idx + 1] = 0xFF - d_img[idx + 1];
-        d_img[idx + 2] = 0xFF - d_img[idx + 2];
-        d_img[idx + 0] = grey;
-        d_img[idx + 1] = grey;
-        d_img[idx + 2] = grey;
-      }
-    }
-  }*/
+  FIBITMAP *split = FreeImage_Rescale(bitmap, width / 2, height / 2, FILTER_BOX);
 
   // Copy back
   memcpy(img, d_img, size);
