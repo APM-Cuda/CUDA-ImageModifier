@@ -43,7 +43,7 @@ __global__ void sobel(unsigned *d_img, unsigned *d_tmp, unsigned width, unsigned
 
       int gy = -d_tmp[idv6] - d_tmp[idv8] - 2 * d_tmp[idv2] + d_tmp[idv5] + d_tmp[idv7] + 2 * d_tmp[idv1];
 
-      int gn = sqrtf(gx * gx + gy * gy);
+      int gn = (gx * gx + gy * gy) / 10000 * (INT_MAX);
 
       d_img[idx + 0] = gn;
 
@@ -129,7 +129,7 @@ __global__ void flou(unsigned *d_img, unsigned width, unsigned height)
   }
 }
 
-__global__ void saturationGris(unsigned *d_img, unsigned width, unsigned height)
+__global__ void saturationBleu(unsigned *d_img, unsigned width, unsigned height)
 {
 
   int y = blockIdx.x * blockDim.x + threadIdx.x;
@@ -164,11 +164,11 @@ __global__ void saturationVert(unsigned *d_img, unsigned width, unsigned height)
   {
 
     int idx = ((y * width) + x) * 3;
-    d_img[idx + 1] = 0xFF/ 1.5;
+    d_img[idx + 1] = 0xFF / 1.5;
   }
 }
 
-__global__ void saturationBleu(unsigned *d_img, unsigned width, unsigned height)
+__global__ void saturationCyan(unsigned *d_img, unsigned width, unsigned height)
 {
 
   int y = blockIdx.x * blockDim.x + threadIdx.x;
@@ -177,8 +177,8 @@ __global__ void saturationBleu(unsigned *d_img, unsigned width, unsigned height)
   {
 
     int idx = ((y * width) + x) * 3;
-    d_img[idx +1 ] = 0xFF/1.5;
-    d_img[idx + 2] = 0xFF/1.5;
+    d_img[idx + 1] = 0xFF / 1.5;
+    d_img[idx + 2] = 0xFF / 1.5;
   }
 }
 __global__ void symhorizontal(unsigned *d_img, unsigned *d_tmp, unsigned width, unsigned height)
@@ -239,11 +239,8 @@ int main(int argc, char **argv)
 
   memcpy(d_img, img, size);
   memcpy(d_tmp, img, size);
-    dim3 dimBlock(32, 32, 1);
-  dim3 dimGrid((height / 32) + 1, (width / 32) + 1, 1);
 
-
- /* unsigned *d_a, *d_b, *d_c;
+  unsigned *d_a, *d_b, *d_c;
 
   cudaMalloc((void **)&d_a, size);
   cudaMalloc((void **)&d_b, size);
@@ -265,9 +262,37 @@ int main(int argc, char **argv)
 
   sobel<<<dimGrid, dimBlock>>>(d_b, d_c, width, height);
 
-  cudaMemcpy(d_img, d_b, size, cudaMemcpyDeviceToHost);*/
+  cudaMemcpy(d_img, d_b, size, cudaMemcpyDeviceToHost);
 
-  FIBITMAP *split = FreeImage_Rescale(bitmap, width / 2, height/2 , FILTER_BOX);
+  FIBITMAP *sobel = FreeImage_Load(FIF_JPEG, PathName, 0);
+
+  bits = (BYTE *)FreeImage_GetBits(sobel);
+  for (int y = 0; y < height; y++)
+  {
+    BYTE *pixel = (BYTE *)bits;
+    for (int x = 0; x < width; x++)
+    {
+      RGBQUAD newcolor;
+
+      int idx = ((y * width) + x) * 3;
+      newcolor.rgbRed = d_img[idx + 0];
+      newcolor.rgbGreen = d_img[idx + 1];
+      newcolor.rgbBlue = d_img[idx + 2];
+
+      if (!FreeImage_SetPixelColor(sobel, x, y, &newcolor))
+      {
+        fprintf(stderr, "(%d, %d) Fail...\n", x, y);
+      }
+
+      pixel += 3;
+    }
+    // next line
+    bits += pitch;
+  }
+
+  // POP-ART
+
+  FIBITMAP *split = FreeImage_Rescale(bitmap, width / 2, height / 2, FILTER_BOX);
 
   unsigned widthSplt = FreeImage_GetWidth(split);
   unsigned heightSplt = FreeImage_GetHeight(split);
@@ -278,7 +303,6 @@ int main(int argc, char **argv)
   int sizeSplt = sizeof(unsigned int) * 3 * widthSplt * heightSplt;
 
   unsigned int *imgSplt = (unsigned int *)malloc(sizeSplt);
-  unsigned int *d_imgSplt = (unsigned int *)malloc(sizeSplt);
   unsigned int *d_tmpSplt = (unsigned int *)malloc(sizeSplt);
 
   BYTE *bitsSplt = (BYTE *)FreeImage_GetBits(split);
@@ -296,29 +320,30 @@ int main(int argc, char **argv)
     // next line
     bitsSplt += pitchSplt;
   }
-  memcpy(d_imgSplt, imgSplt, sizeSplt);
 
-unsigned int *d_imgSplt2 = (unsigned int *)malloc(sizeSplt);
-  unsigned int *d_imgSplt3 = (unsigned int *)malloc(sizeSplt);
-  unsigned int *d_imgSplt4 = (unsigned int *)malloc(sizeSplt);
+  unsigned int *d_imgSplt;
+  unsigned int *d_imgSplt2;
+  unsigned int *d_imgSplt3;
+  unsigned int *d_imgSplt4;
+
+  cudaMallocHost((void **)&d_imgSplt2, sizeSplt);
+  cudaMallocHost((void **)&d_imgSplt3, sizeSplt);
+  cudaMallocHost((void **)&d_imgSplt4, sizeSplt);
+  cudaMallocHost((void **)&d_imgSplt, sizeSplt);
+
+  memcpy(d_imgSplt, imgSplt, sizeSplt);
 
   memcpy(d_imgSplt2, imgSplt, sizeSplt);
   memcpy(d_imgSplt3, imgSplt, sizeSplt);
   memcpy(d_imgSplt4, imgSplt, sizeSplt);
 
-    unsigned *d1, *d2, *d3, *d4;
+  unsigned *d1, *d2, *d3, *d4;
 
-  //! Cuda malloc host + cuda memcopy async !!!
 
   cudaMalloc((void **)&d1, sizeSplt);
   cudaMalloc((void **)&d2, sizeSplt);
   cudaMalloc((void **)&d3, sizeSplt);
   cudaMalloc((void **)&d4, sizeSplt);
-
-  cudaMemcpy(d1, d_imgSplt, sizeSplt, cudaMemcpyHostToDevice);
-  cudaMemcpy(d2, d_imgSplt2, sizeSplt, cudaMemcpyHostToDevice);
-  cudaMemcpy(d3, d_imgSplt3, sizeSplt, cudaMemcpyHostToDevice);
-  cudaMemcpy(d4, d_imgSplt4, sizeSplt, cudaMemcpyHostToDevice);
 
   cudaStream_t stream[4];
 
@@ -327,19 +352,30 @@ unsigned int *d_imgSplt2 = (unsigned int *)malloc(sizeSplt);
   cudaStreamCreate(&stream[2]);
   cudaStreamCreate(&stream[3]);
 
+  cudaMemcpyAsync(d1, d_imgSplt, sizeSplt, cudaMemcpyHostToDevice,stream[0]);
+  cudaMemcpyAsync(d2, d_imgSplt2, sizeSplt, cudaMemcpyHostToDevice,stream[1]);
+  cudaMemcpyAsync(d3, d_imgSplt3, sizeSplt, cudaMemcpyHostToDevice,stream[2]);
+  cudaMemcpyAsync(d4, d_imgSplt4, sizeSplt, cudaMemcpyHostToDevice,stream[3]);
+
   saturationRouge<<<dimGrid, dimBlock, 0, stream[0]>>>(d1, widthSplt, heightSplt);
-  saturationBleu<<<dimGrid, dimBlock, 0, stream[1]>>>(d2, widthSplt, heightSplt);
-  saturationGris<<<dimGrid, dimBlock, 0, stream[2]>>>(d3, widthSplt, heightSplt);
+  saturationCyan<<<dimGrid, dimBlock, 0, stream[1]>>>(d2, widthSplt, heightSplt);
+  saturationBleu<<<dimGrid, dimBlock, 0, stream[2]>>>(d3, widthSplt, heightSplt);
   saturationVert<<<dimGrid, dimBlock, 0, stream[3]>>>(d4, widthSplt, heightSplt);
 
-  cudaMemcpy(d_imgSplt, d1, sizeSplt, cudaMemcpyDeviceToHost);
-  cudaMemcpy(d_imgSplt2, d2, sizeSplt, cudaMemcpyDeviceToHost);
-  cudaMemcpy(d_imgSplt3, d3, sizeSplt, cudaMemcpyDeviceToHost);
-  cudaMemcpy(d_imgSplt4, d4, sizeSplt, cudaMemcpyDeviceToHost);
-  // Copy back
-  //memcpy(img, d_img, size);
+  cudaMemcpyAsync(d_imgSplt, d1, sizeSplt, cudaMemcpyDeviceToHost,stream[0]);
+  cudaMemcpyAsync(d_imgSplt2, d2, sizeSplt, cudaMemcpyDeviceToHost,stream[1]);
+  cudaMemcpyAsync(d_imgSplt3, d3, sizeSplt, cudaMemcpyDeviceToHost,stream[2]);
+  cudaMemcpyAsync(d_imgSplt4, d4, sizeSplt, cudaMemcpyDeviceToHost,stream[3]);
 
- bits = (BYTE *)FreeImage_GetBits(bitmap);
+  cudaStreamSynchronize(stream[0]);
+  cudaStreamSynchronize(stream[1]);
+  cudaStreamSynchronize(stream[2]);
+  cudaStreamSynchronize(stream[3]);
+
+  // Copy back
+  // memcpy(img, d_img, size);
+
+  bits = (BYTE *)FreeImage_GetBits(bitmap);
   for (int y = 0; y < heightSplt; y++)
   {
     BYTE *pixel = (BYTE *)bits;
@@ -363,7 +399,7 @@ unsigned int *d_imgSplt2 = (unsigned int *)malloc(sizeSplt);
     bits += pitch;
   }
 
- bitsSplt = (BYTE *)FreeImage_GetBits(bitmap);
+  bitsSplt = (BYTE *)FreeImage_GetBits(bitmap);
 
   for (int y = 0; y < heightSplt; y++)
   {
@@ -387,7 +423,7 @@ unsigned int *d_imgSplt2 = (unsigned int *)malloc(sizeSplt);
     // next line
     bitsSplt += pitchSplt;
   }
- bitsSplt = (BYTE *)FreeImage_GetBits(bitmap);
+  bitsSplt = (BYTE *)FreeImage_GetBits(bitmap);
 
   for (int y = 0; y < heightSplt; y++)
   {
@@ -411,8 +447,7 @@ unsigned int *d_imgSplt2 = (unsigned int *)malloc(sizeSplt);
     // next line
     bitsSplt += pitchSplt;
   }
- bitsSplt = (BYTE *)FreeImage_GetBits(bitmap);
-
+  bitsSplt = (BYTE *)FreeImage_GetBits(bitmap);
 
   for (int y = 0; y < heightSplt; y++)
   {
@@ -438,6 +473,8 @@ unsigned int *d_imgSplt2 = (unsigned int *)malloc(sizeSplt);
   }
 
   if (FreeImage_Save(FIF_PNG, bitmap, PathDest, 0))
+    cout << "Image successfully saved ! " << endl;
+  if (FreeImage_Save(FIF_PNG, sobel, "sobel.png", 0))
     cout << "Image successfully saved ! " << endl;
   FreeImage_DeInitialise(); // Cleanup !
 
