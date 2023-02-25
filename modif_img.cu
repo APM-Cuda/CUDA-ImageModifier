@@ -43,7 +43,7 @@ __global__ void sobel(unsigned *d_img, unsigned *d_tmp, unsigned width, unsigned
 
       int gy = -d_tmp[idv6] - d_tmp[idv8] - 2 * d_tmp[idv2] + d_tmp[idv5] + d_tmp[idv7] + 2 * d_tmp[idv1];
 
-      int gn = (gx * gx + gy * gy) / 10000 * (INT_MAX);
+      int gn = (gx * gx + gy * gy) / 10000 * (5000);
 
       d_img[idx + 0] = gn;
 
@@ -51,6 +51,137 @@ __global__ void sobel(unsigned *d_img, unsigned *d_tmp, unsigned width, unsigned
 
       d_img[idx + 2] = gn;
     }
+  }
+}
+
+__global__ void canny(unsigned *d_img, unsigned *d_tmp, unsigned width, unsigned height)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+    int idx = ((y * width) + x) * 3;
+
+    if (y == 0 || x == 0 || y == height - 1 || x == width - 1)
+    {
+      d_img[idx] = 0;
+      d_img[idx + 1] = 0;
+      d_img[idx + 2] = 0;
+      continue;
+    }
+
+    int idv1 = (y * width + (x - 1) * 3);
+    int idv2 = (y * width + (x + 1) * 3);
+    int idv3 = (((y - 1) * width + x) * 3);
+    int idv4 = (((y + 1) * width + x) * 3);
+
+    int gx = -d_tmp[idv1] + d_tmp[idv2];
+
+    int gy = -d_tmp[idv3] + d_tmp[idv4];
+
+    int gn = sqrt(gx * gx + gy * gy);
+
+    d_img[idx + 0] = gn;
+
+    d_img[idx + 1] = gn;
+
+    d_img[idx + 2] = gn;
+  }
+}
+
+__global__ void resize(unsigned *d_img, unsigned width, unsigned height, unsigned newWidth, unsigned newHeight)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+    int idx = ((y * newWidth) + x) * 3;
+
+    float u = (float)x / (float)newWidth * (float)width;
+    float v = (float)y / (float)newHeight * (float)height;
+
+    int x1 = (int)u;
+    int y1 = (int)v;
+    int x2 = x1 + 1;
+    int y2 = y1 + 1;
+
+    if (x2 >= width)
+    {
+      x2 = width - 1;
+    }
+    if (y2 >= height)
+    {
+      y2 = height - 1;
+    }
+
+    float a = u - (float)x1;
+    float b = v - (float)y1;
+
+    int idv1 = (((y1 * width) + x1) * 3);
+    int idv2 = (((y1 * width) + x2) * 3);
+    int idv3 = (((y2 * width) + x1) * 3);
+    int idv4 = (((y2 * width) + x2) * 3);
+
+    img_new[idx] = (BYTE)(img[idv1] * (1.0f - a) * (1.0f - b) + img[idv2] * a * (1.0f - b) + img[idv3] * (1.0f - a) * b + img[idv4] * a * b);
+    img_new[idx + 1] = (BYTE)(img[idv1 + 1] * (1.0f - a) * (1.0f - b) + img[idv2 + 1] * a * (1.0f - b) + img[idv3 + 1] * (1.0f - a) * b + img[idv4 + 1] * a * b);
+    img_new[idx + 2] = (BYTE)(img[idv1 + 2] * (1.0f - a) * (1.0f - b) + img[idv2 + 2] * a * (1.0f - b) + img[idv3 + 2] * (1.0f - a) * b + img[idv4 + 2] * a * b);
+  }
+}
+
+__global__ void onlyRouge(unsigned *d_img, unsigned width, unsigned height)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+
+    int idx = ((y * width) + x) * 3;
+
+    d_img[idx + 1] = 0;
+    d_img[idx + 2] = 0;
+  }
+}
+
+__global__ void onlyBleu(unsigned *d_img, unsigned width, unsigned height)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+
+    int idx = ((y * width) + x) * 3;
+
+    d_img[idx] = 0;
+    d_img[idx + 1] = 0;
+  }
+}
+
+__global__ void onlyVert(unsigned *d_img, unsigned width, unsigned height)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+
+    int idx = ((y * width) + x) * 3;
+
+    d_img[idx] = 0;
+    d_img[idx + 2] = 0;
+  }
+}
+
+__global__ void diapositive(unsigned *d_img, unsigned width, unsigned height)
+{
+  int y = blockIdx.x * blockDim.x + threadIdx.x;
+  int x = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y < height && x < width)
+  {
+
+    int idx = ((y * width) + x) * 3;
+
+    d_img[idx + 0] = 255 - d_img[idx];
+    d_img[idx + 1] = 255 - d_img[idx + 1];
+    d_img[idx + 2] = 255 - d_img[idx + 2];
   }
 }
 
@@ -67,7 +198,6 @@ __global__ void gris(unsigned *d_img, unsigned width, unsigned height)
     d_img[idx + 0] = grey;
     d_img[idx + 1] = grey;
     d_img[idx + 2] = grey;
-    // printf("%d %d %f\n",y,x, count);
   }
 }
 __global__ void flou(unsigned *d_img, unsigned width, unsigned height)
@@ -251,20 +381,15 @@ int main(int argc, char **argv)
   dim3 dimBlock(32, 32, 1);
   dim3 dimGrid((height / 32) + 1, (width / 32) + 1, 1);
 
-  gris<<<dimGrid, dimBlock>>>(d_a, width, height);
+  onlyRouge<<<dimGrid, dimBlock>>>(d_a, width, height);
+
+  // sobel<<<dimGrid, dimBlock>>>(d_b, d_c, width, height);
 
   cudaMemcpy(d_img, d_a, size, cudaMemcpyDeviceToHost);
 
-  cudaDeviceSynchronize();
-
-  cudaMemcpy(d_b, d_img, size, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_c, d_tmp, size, cudaMemcpyHostToDevice);
-
-  sobel<<<dimGrid, dimBlock>>>(d_b, d_c, width, height);
-
-  cudaMemcpy(d_img, d_b, size, cudaMemcpyDeviceToHost);
-
   FIBITMAP *sobel = FreeImage_Load(FIF_JPEG, PathName, 0);
+
+  cudaDeviceSynchronize();
 
   bits = (BYTE *)FreeImage_GetBits(sobel);
   for (int y = 0; y < height; y++)
@@ -339,7 +464,6 @@ int main(int argc, char **argv)
 
   unsigned *d1, *d2, *d3, *d4;
 
-
   cudaMalloc((void **)&d1, sizeSplt);
   cudaMalloc((void **)&d2, sizeSplt);
   cudaMalloc((void **)&d3, sizeSplt);
@@ -352,20 +476,20 @@ int main(int argc, char **argv)
   cudaStreamCreate(&stream[2]);
   cudaStreamCreate(&stream[3]);
 
-  cudaMemcpyAsync(d1, d_imgSplt, sizeSplt, cudaMemcpyHostToDevice,stream[0]);
-  cudaMemcpyAsync(d2, d_imgSplt2, sizeSplt, cudaMemcpyHostToDevice,stream[1]);
-  cudaMemcpyAsync(d3, d_imgSplt3, sizeSplt, cudaMemcpyHostToDevice,stream[2]);
-  cudaMemcpyAsync(d4, d_imgSplt4, sizeSplt, cudaMemcpyHostToDevice,stream[3]);
+  cudaMemcpyAsync(d1, d_imgSplt, sizeSplt, cudaMemcpyHostToDevice, stream[0]);
+  cudaMemcpyAsync(d2, d_imgSplt2, sizeSplt, cudaMemcpyHostToDevice, stream[1]);
+  cudaMemcpyAsync(d3, d_imgSplt3, sizeSplt, cudaMemcpyHostToDevice, stream[2]);
+  cudaMemcpyAsync(d4, d_imgSplt4, sizeSplt, cudaMemcpyHostToDevice, stream[3]);
 
   saturationRouge<<<dimGrid, dimBlock, 0, stream[0]>>>(d1, widthSplt, heightSplt);
   saturationCyan<<<dimGrid, dimBlock, 0, stream[1]>>>(d2, widthSplt, heightSplt);
   saturationBleu<<<dimGrid, dimBlock, 0, stream[2]>>>(d3, widthSplt, heightSplt);
   saturationVert<<<dimGrid, dimBlock, 0, stream[3]>>>(d4, widthSplt, heightSplt);
 
-  cudaMemcpyAsync(d_imgSplt, d1, sizeSplt, cudaMemcpyDeviceToHost,stream[0]);
-  cudaMemcpyAsync(d_imgSplt2, d2, sizeSplt, cudaMemcpyDeviceToHost,stream[1]);
-  cudaMemcpyAsync(d_imgSplt3, d3, sizeSplt, cudaMemcpyDeviceToHost,stream[2]);
-  cudaMemcpyAsync(d_imgSplt4, d4, sizeSplt, cudaMemcpyDeviceToHost,stream[3]);
+  cudaMemcpyAsync(d_imgSplt, d1, sizeSplt, cudaMemcpyDeviceToHost, stream[0]);
+  cudaMemcpyAsync(d_imgSplt2, d2, sizeSplt, cudaMemcpyDeviceToHost, stream[1]);
+  cudaMemcpyAsync(d_imgSplt3, d3, sizeSplt, cudaMemcpyDeviceToHost, stream[2]);
+  cudaMemcpyAsync(d_imgSplt4, d4, sizeSplt, cudaMemcpyDeviceToHost, stream[3]);
 
   cudaStreamSynchronize(stream[0]);
   cudaStreamSynchronize(stream[1]);
